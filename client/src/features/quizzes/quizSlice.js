@@ -73,6 +73,15 @@ export const createQuestion = createAsyncThunk('questions/create', async (payloa
   }
 })
 
+export const updateQuestion = createAsyncThunk('questions/update', async ({ id, ...payload }, { rejectWithValue }) => {
+  try {
+    const response = await http.put(`/questions/${id}`, payload)
+    return response.data.data.question
+  } catch (error) {
+    return rejectWithValue(getErrorMessage(error))
+  }
+})
+
 export const deleteQuestion = createAsyncThunk('questions/delete', async (id, { rejectWithValue }) => {
   try {
     await http.delete(`/questions/${id}`)
@@ -121,6 +130,11 @@ const quizSlice = createSlice({
       })
       .addCase(createQuestion.fulfilled, (state, action) => {
         state.questions.unshift(action.payload)
+      })
+      .addCase(updateQuestion.fulfilled, (state, action) => {
+        state.questions = state.questions.map((question) => (
+          question._id === action.payload._id ? action.payload : question
+        ))
       })
       .addCase(deleteQuestion.fulfilled, (state, action) => {
         state.questions = state.questions.filter((question) => question._id !== action.payload)

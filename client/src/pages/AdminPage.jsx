@@ -7,8 +7,16 @@ import {
   deleteQuestion,
   deleteQuiz,
   fetchQuestions,
-  fetchQuizzes
+  fetchQuizzes,
+  updateQuestion,
+  updateQuiz
 } from '../features/quizzes/quizSlice'
+
+const emptyQuizForm = {
+  title: '',
+  description: '',
+  isPublished: true
+}
 
 const emptyQuestionForm = {
   quizId: '',
@@ -23,12 +31,10 @@ const emptyQuestionForm = {
 function AdminPage() {
   const dispatch = useDispatch()
   const { items, questions, error } = useSelector((state) => state.quizzes)
-  const [quizForm, setQuizForm] = useState({
-    title: '',
-    description: '',
-    isPublished: true
-  })
+  const [quizForm, setQuizForm] = useState(emptyQuizForm)
+  const [editingQuizId, setEditingQuizId] = useState(null)
   const [questionForm, setQuestionForm] = useState(emptyQuestionForm)
+  const [editingQuestionId, setEditingQuestionId] = useState(null)
 
   useEffect(() => {
     dispatch(fetchQuizzes())
@@ -44,16 +50,57 @@ function AdminPage() {
     }
   }, [items, questionForm.quizId])
 
-  const handleCreateQuiz = async (event) => {
+  const resetQuizForm = () => {
+    setQuizForm(emptyQuizForm)
+    setEditingQuizId(null)
+  }
+
+  const resetQuestionForm = (quizId = questionForm.quizId) => {
+    setQuestionForm({
+      ...emptyQuestionForm,
+      quizId
+    })
+    setEditingQuestionId(null)
+  }
+
+  const handleEditQuiz = (quiz) => {
+    setEditingQuizId(quiz._id || quiz.id)
+    setQuizForm({
+      title: quiz.title || '',
+      description: quiz.description || '',
+      isPublished: Boolean(quiz.isPublished)
+    })
+  }
+
+  const handleEditQuestion = (question) => {
+    const optionTexts = question.options?.map((option) => option.text) || []
+
+    setEditingQuestionId(question._id)
+    setQuestionForm({
+      quizId: question.quiz?._id || question.quiz || '',
+      text: question.text || '',
+      optionA: optionTexts[0] || '',
+      optionB: optionTexts[1] || '',
+      optionC: optionTexts[2] || '',
+      optionD: optionTexts[3] || '',
+      correctOptionIndex: question.correctOptionIndex ?? 0
+    })
+  }
+
+  const handleSubmitQuiz = async (event) => {
     event.preventDefault()
-    const action = await dispatch(createQuiz(quizForm))
-    if (createQuiz.fulfilled.match(action)) {
-      setQuizForm({ title: '', description: '', isPublished: true })
+
+    const action = editingQuizId
+      ? await dispatch(updateQuiz({ id: editingQuizId, ...quizForm }))
+      : await dispatch(createQuiz(quizForm))
+
+    if (createQuiz.fulfilled.match(action) || updateQuiz.fulfilled.match(action)) {
+      resetQuizForm()
       dispatch(fetchQuizzes())
     }
   }
 
-  const handleCreateQuestion = async (event) => {
+  const handleSubmitQuestion = async (event) => {
     event.preventDefault()
     const options = [
       questionForm.optionA,
@@ -62,19 +109,21 @@ function AdminPage() {
       questionForm.optionD
     ].filter(Boolean)
 
-    const action = await dispatch(createQuestion({
+    const payload = {
       quizId: questionForm.quizId,
       text: questionForm.text,
       options,
       correctOptionIndex: Number(questionForm.correctOptionIndex)
-    }))
+    }
 
-    if (createQuestion.fulfilled.match(action)) {
-      setQuestionForm({
-        ...emptyQuestionForm,
-        quizId: questionForm.quizId
-      })
+    const action = editingQuestionId
+      ? await dispatch(updateQuestion({ id: editingQuestionId, ...payload }))
+      : await dispatch(createQuestion(payload))
+
+    if (createQuestion.fulfilled.match(action) || updateQuestion.fulfilled.match(action)) {
+      resetQuestionForm(questionForm.quizId)
       dispatch(fetchQuizzes())
+      dispatch(fetchQuestions())
     }
   }
 
@@ -89,8 +138,15 @@ function AdminPage() {
       <div className="row g-4">
         <section className="col-lg-5">
           <div className="panel">
-            <h2 className="h5 fw-bold mb-3">Create Quiz</h2>
-            <form onSubmit={handleCreateQuiz}>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h2 className="h5 fw-bold mb-0">{editingQuizId ? 'Update Quiz' : 'Create Quiz'}</h2>
+              {editingQuizId && (
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={resetQuizForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
+            <form onSubmit={handleSubmitQuiz}>
               <div className="mb-3">
                 <label className="form-label">Title</label>
                 <input className="form-control" value={quizForm.title} onChange={(event) => setQuizForm({ ...quizForm, title: event.target.value })} required />
@@ -103,7 +159,7 @@ function AdminPage() {
                 <input className="form-check-input" type="checkbox" checked={quizForm.isPublished} onChange={(event) => setQuizForm({ ...quizForm, isPublished: event.target.checked })} />
                 <label className="form-check-label">Published</label>
               </div>
-              <button className="btn btn-primary">Create quiz</button>
+              <button className="btn btn-primary">{editingQuizId ? 'Update quiz' : 'Create quiz'}</button>
             </form>
           </div>
 
@@ -116,9 +172,14 @@ function AdminPage() {
                     <div className="fw-semibold">{quiz.title}</div>
                     <div className="small text-secondary">{quiz.totalQuestions || 0} questions</div>
                   </div>
-                  <button className="btn btn-outline-danger btn-sm" onClick={() => dispatch(deleteQuiz(quiz._id || quiz.id))}>
-                    Delete
-                  </button>
+                  <div className="d-flex gap-2">
+                    <button className="btn btn-outline-primary btn-sm" onClick={() => handleEditQuiz(quiz)}>
+                      Edit
+                    </button>
+                    <button className="btn btn-outline-danger btn-sm" onClick={() => dispatch(deleteQuiz(quiz._id || quiz.id))}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -127,8 +188,15 @@ function AdminPage() {
 
         <section className="col-lg-7">
           <div className="panel">
-            <h2 className="h5 fw-bold mb-3">Create Question</h2>
-            <form onSubmit={handleCreateQuestion}>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h2 className="h5 fw-bold mb-0">{editingQuestionId ? 'Update Question' : 'Create Question'}</h2>
+              {editingQuestionId && (
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => resetQuestionForm()}>
+                  Cancel
+                </button>
+              )}
+            </div>
+            <form onSubmit={handleSubmitQuestion}>
               <div className="mb-3">
                 <label className="form-label">Quiz</label>
                 <select className="form-select" value={questionForm.quizId} onChange={(event) => setQuestionForm({ ...questionForm, quizId: event.target.value })} required>
@@ -160,7 +228,7 @@ function AdminPage() {
                   <option value="3">Option 4</option>
                 </select>
               </div>
-              <button className="btn btn-primary">Create question</button>
+              <button className="btn btn-primary">{editingQuestionId ? 'Update question' : 'Create question'}</button>
             </form>
           </div>
 
@@ -173,9 +241,14 @@ function AdminPage() {
                     <div className="fw-semibold">{question.text}</div>
                     <div className="small text-secondary">{question.quiz?.title || 'Quiz'}</div>
                   </div>
-                  <button className="btn btn-outline-danger btn-sm" onClick={() => dispatch(deleteQuestion(question._id))}>
-                    Delete
-                  </button>
+                  <div className="d-flex gap-2">
+                    <button className="btn btn-outline-primary btn-sm" onClick={() => handleEditQuestion(question)}>
+                      Edit
+                    </button>
+                    <button className="btn btn-outline-danger btn-sm" onClick={() => dispatch(deleteQuestion(question._id))}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
